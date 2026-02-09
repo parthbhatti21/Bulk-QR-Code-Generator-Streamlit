@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QR Code Generator - Share Links Instantly</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        header {
+            text-align: center;
+            color: white;
+            margin-bottom: 40px;
+            margin-top: 20px;
+        }
+
+        header h1 {
+            font-size: 42px;
+            margin-bottom: 10px;
+            font-weight: 700;
+        }
+
+        header p {
+            font-size: 16px;
+            opacity: 0.9;
+        }
+
+        .content {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            margin-bottom: 40px;
+        }
+
+        @media (max-width: 768px) {
+            .content {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .form-section,
+        .result-section {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+        }
+
+        .form-section h2,
+        .result-section h2 {
+            color: #333;
+            margin-bottom: 20px;
+            font-size: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #333;
+            font-weight: 500;
+            font-size: 14px;
+        }
+
+        textarea {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-family: inherit;
+            font-size: 14px;
+            resize: vertical;
+            min-height: 200px;
+            transition: border-color 0.3s;
+        }
+
+        textarea:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .button-group {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+        }
+
+        button {
+            flex: 1;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .btn-generate {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-generate:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+        }
+
+        .btn-generate:active {
+            transform: translateY(0);
+        }
+
+        .btn-generate:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn-download {
+            background: #4CAF50;
+            color: white;
+        }
+
+        .btn-download:hover {
+            background: #45a049;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(76, 175, 80, 0.3);
+        }
+
+        .btn-copy {
+            background: #2196F3;
+            color: white;
+            flex: 1;
+        }
+
+        .btn-copy:hover {
+            background: #0b7dda;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(33, 150, 243, 0.3);
+        }
+
+        .result-section {
+            display: none;
+        }
+
+        .result-section.show {
+            display: block;
+        }
+
+        .qr-image {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .qr-image img {
+            max-width: 100%;
+            height: auto;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        }
+
+        .qr-url {
+            background: #f5f5f5;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            word-break: break-all;
+            font-size: 12px;
+            color: #666;
+            font-family: monospace;
+        }
+
+        .links-list {
+            background: #f9f9f9;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 20px;
+            max-height: 250px;
+            overflow-y: auto;
+        }
+
+        .links-list h3 {
+            color: #333;
+            font-size: 14px;
+            margin-bottom: 10px;
+        }
+
+        .links-list ol {
+            padding-left: 20px;
+            color: #666;
+            font-size: 13px;
+        }
+
+        .links-list li {
+            margin-bottom: 8px;
+            word-break: break-all;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            color: #667eea;
+            font-weight: 500;
+        }
+
+        .loading.show {
+            display: block;
+        }
+
+        .spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-right: 10px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .error {
+            background: #ffebee;
+            color: #c62828;
+            padding: 12px;
+            border-radius: 8px;
+            margin-top: 15px;
+            display: none;
+            border-left: 4px solid #c62828;
+        }
+
+        .error.show {
+            display: block;
+        }
+
+        .success-message {
+            background: #e8f5e9;
+            color: #2e7d32;
+            padding: 12px;
+            border-radius: 8px;
+            margin-top: 15px;
+            display: none;
+            border-left: 4px solid #2e7d32;
+        }
+
+        .success-message.show {
+            display: block;
+        }
+
+        footer {
+            text-align: center;
+            color: white;
+            opacity: 0.8;
+            font-size: 14px;
+            margin-top: 50px;
+            padding-bottom: 20px;
+        }
+
+        .helper-text {
+            color: #999;
+            font-size: 12px;
+            margin-top: 8px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🔗 QR Link Generator</h1>
+            <p>Generate a single QR code for multiple links. One scan, all your links!</p>
+        </header>
+
+        <div class="content">
+            <!-- Form Section -->
+            <div class="form-section">
+                <h2>Enter Your Links</h2>
+                <label for="links">Paste your links (one per line):</label>
+                <textarea id="links" placeholder="https://example.com&#10;https://google.com&#10;https://github.com&#10;https://linkedin.com"></textarea>
+                <p class="helper-text">💡 Links will open in a new tab when scanned</p>
+                <div class="button-group">
+                    <button class="btn-generate" id="generateBtn">Generate QR Code</button>
+                </div>
+                <div class="error" id="error"></div>
+                <div class="success-message" id="success"></div>
+                <div class="loading" id="loading">
+                    <span class="spinner"></span>Generating QR code...
+                </div>
+            </div>
+
+            <!-- Result Section -->
+            <div class="result-section" id="resultSection">
+                <h2>Your QR Code</h2>
+                <div class="qr-image" id="qrImage"></div>
+                <div class="button-group">
+                    <button class="btn-download" id="downloadBtn">📥 Download QR</button>
+                    <button class="btn-copy" id="copyBtn">📋 Copy URL</button>
+                </div>
+                <div class="qr-url" id="qrUrl"></div>
+                <div class="links-list">
+                    <h3>Links in this QR Code:</h3>
+                    <ol id="linksList"></ol>
+                </div>
+            </div>
+        </div>
+
+        <footer>
+            <p>✨ Share your QR code with anyone. Works on all devices!</p>
+        </footer>
+    </div>
+
+    <script>
+        const linksTextarea = document.getElementById('links');
+        const generateBtn = document.getElementById('generateBtn');
+        const errorDiv = document.getElementById('error');
+        const successDiv = document.getElementById('success');
+        const loadingDiv = document.getElementById('loading');
+        const resultSection = document.getElementById('resultSection');
+        const downloadBtn = document.getElementById('downloadBtn');
+        const copyBtn = document.getElementById('copyBtn');
+        const qrImage = document.getElementById('qrImage');
+        const qrUrl = document.getElementById('qrUrl');
+        const linksList = document.getElementById('linksList');
+
+        let currentQRData = null;
+
+        function showError(message) {
+            errorDiv.textContent = message;
+            errorDiv.classList.add('show');
+            successDiv.classList.remove('show');
+        }
+
+        function showSuccess(message) {
+            successDiv.textContent = message;
+            successDiv.classList.add('show');
+            errorDiv.classList.remove('show');
+        }
+
+        function hideMessages() {
+            errorDiv.classList.remove('show');
+            successDiv.classList.remove('show');
+        }
+
+        generateBtn.addEventListener('click', async () => {
+            hideMessages();
+            const linksText = linksTextarea.value.trim();
+
+            if (!linksText) {
+                showError('Please enter at least one link');
+                return;
+            }
+
+            const links = linksText
+                .split('\n')
+                .map(link => link.trim())
+                .filter(link => link.length > 0);
+
+            if (links.length === 0) {
+                showError('Please enter at least one valid link');
+                return;
+            }
+
+            generateBtn.disabled = true;
+            loadingDiv.classList.add('show');
+
+            try {
+                const response = await fetch('/api/generate', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ links })
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.error || 'Failed to generate QR code');
+                }
+
+                currentQRData = data;
+                displayResult(data);
+                showSuccess('✅ QR Code generated successfully!');
+            } catch (error) {
+                showError(error.message);
+            } finally {
+                generateBtn.disabled = false;
+                loadingDiv.classList.remove('show');
+            }
+        });
+
+        function displayResult(data) {
+            // Display QR image
+            qrImage.innerHTML = `<img src="${data.qr_image}" alt="QR Code">`;
+
+            // Display URL
+            qrUrl.textContent = data.qr_url;
+
+            // Display links list
+            linksList.innerHTML = data.links
+                .map((link, index) => `<li>${link}</li>`)
+                .join('');
+
+            // Show result section
+            resultSection.classList.add('show');
+        }
+
+        downloadBtn.addEventListener('click', () => {
+            if (!currentQRData) return;
+
+            const link = document.createElement('a');
+            link.href = currentQRData.qr_image;
+            link.download = `qr_code_${currentQRData.qr_id}.png`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        });
+
+        copyBtn.addEventListener('click', () => {
+            if (!currentQRData) return;
+
+            navigator.clipboard.writeText(currentQRData.qr_url).then(() => {
+                showSuccess('✅ URL copied to clipboard!');
+                setTimeout(() => successDiv.classList.remove('show'), 3000);
+            }).catch(() => {
+                showError('Failed to copy URL');
+            });
+        });
+
+        // Allow Enter key to generate QR code
+        linksTextarea.addEventListener('keydown', (e) => {
+            if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                generateBtn.click();
+            }
+        });
+    </script>
+</body>
+</html>

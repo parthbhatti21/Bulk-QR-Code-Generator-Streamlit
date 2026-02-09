@@ -1,79 +1,229 @@
-import streamlit as st
+from flask import Flask, render_template, request, jsonify, send_file
 import qrcode
 from qrcode.image.pil import PilImage
-from PIL import Image
 import io
 import base64
-from urllib.parse import urlparse
+import string
+import random
+from datetime import datetime
+import os
 
+app = Flask(__name__)
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max
 
-# Function to convert image to base64
-def get_image_as_base64(image: Image):
-    buffer = io.BytesIO()
-    image.save(buffer, format="PNG")
-    image_base64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
-    return image_base64
+# Simple in-memory storage (use database for production)
+# For production, use PostgreSQL or MongoDB
+qr_storage = {}
 
-def get_url_filename(url):
-    parsed_uri = urlparse(url)
-    domain = '{uri.netloc}'.format(uri=parsed_uri)
-    main_domain = domain.split('.')
-    main_domain = main_domain[1] if main_domain[0] == 'www' else main_domain[0]
-    path = parsed_uri.path.strip('/').replace('/', '_')
-    return f"{main_domain}_{path}" if path else main_domain
+def generate_short_id(length=6):
+    """Generate a short random ID for the QR code"""
+    characters = string.ascii_letters + string.digits
+    return ''.join(random.choice(characters) for _ in range(length))
 
+def generate_html_with_links(links):
+    """Generate HTML content with all the links"""
+    html_content = """
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Links from QR Code</title>
+        <style>
+            * {
+                margin: 0;
+                padding: 0;
+                box-sizing: border-box;
+            }
+            body {
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                min-height: 100vh;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                padding: 20px;
+            }
+            .container {
+                background: white;
+                border-radius: 12px;
+                box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+                padding: 30px;
+                max-width: 500px;
+                width: 100%;
+            }
+            h1 {
+                color: #333;
+                text-align: center;
+                margin-bottom: 10px;
+                font-size: 28px;
+            }
+            .subtitle {
+                text-align: center;
+                color: #666;
+                margin-bottom: 30px;
+                font-size: 14px;
+            }
+            .links-container {
+                display: flex;
+                flex-direction: column;
+                gap: 12px;
+            }
+            a {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                padding: 16px;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                color: white;
+                text-decoration: none;
+                border-radius: 8px;
+                transition: all 0.3s ease;
+                font-weight: 500;
+                overflow: hidden;
+            }
+            a:active, a:hover {
+                transform: translateY(-2px);
+                box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
+            }
+            a .link-text {
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                flex: 1;
+                margin-right: 10px;
+            }
+            a .arrow {
+                font-size: 18px;
+                flex-shrink: 0;
+            }
+            .link-number {
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                width: 24px;
+                height: 24px;
+                background: rgba(255,255,255,0.2);
+                border-radius: 50%;
+                margin-right: 10px;
+                flex-shrink: 0;
+                font-size: 12px;
+                font-weight: bold;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h1>📱 Your Links</h1>
+            <p class="subtitle">Tap any link below to open it</p>
+            <div class="links-container">
+    """
+    
+    for idx, link in enumerate(links, 1):
+        if link.strip():
+            safe_link = link.strip()
+            if not safe_link.startswith(('http://', 'https://')):
+                safe_link = 'https://' + safe_link
+            html_content += f'                <a href="{safe_link}" target="_blank"><span class="link-number">{idx}</span><span class="link-text">{link.strip()}</span><span class="arrow">→</span></a>\n'
+    
+    html_content += """
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+    return html_content
 
+@app.route('/')
+def index():
+    return render_template('index.html')
 
+@app.route('/api/generate', methods=['POST'])
+def generate_qr():
+    """Generate QR code and store links"""
+    try:
+        data = request.json
+        links = data.get('links', [])
+        
+        # Validate input
+        if not links or not any(link.strip() for link in links):
+            return jsonify({'error': 'Please enter at least one link'}), 400
+        
+        # Filter empty links
+        links = [link.strip() for link in links if link.strip()]
+        
+        # Generate unique ID
+        qr_id = generate_short_id()
+        while qr_id in qr_storage:
+            qr_id = generate_short_id()
+        
+        # Create URL for the QR code
+        qr_url = f"{request.host_url.rstrip('/')}/#/qr/{qr_id}"
+        
+        # Generate QR code
+        qr = qrcode.QRCode(
+            version=None,
+            error_correction=qrcode.constants.ERROR_CORRECT_H,
+            box_size=10,
+            border=4
+        )
+        qr.add_data(qr_url)
+        qr.make(fit=True)
+        
+        img = qr.make_image(fill_color="black", back_color="white")
+        
+        # Convert to base64
+        buffer = io.BytesIO()
+        img.save(buffer, format="PNG")
+        img_base64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
+        
+        # Store the links data
+        qr_storage[qr_id] = {
+            'links': links,
+            'created_at': datetime.now().isoformat(),
+            'qr_image': img_base64
+        }
+        
+        return jsonify({
+            'success': True,
+            'qr_id': qr_id,
+            'qr_image': f'data:image/png;base64,{img_base64}',
+            'qr_url': qr_url,
+            'links': links
+        })
+    
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
-# Streamlit app title
-st.title("Bulk QR Code Generator")
-st.write("This is a simple Streamlit web app for generating QR codes based on user input. You can choose between generating a QR code for a URL or plain text with the ability to generate multiple URLs at once.")
+@app.route('/api/qr/<qr_id>')
+def get_qr_data(qr_id):
+    """Get the links and HTML for a specific QR code"""
+    if qr_id not in qr_storage:
+        return jsonify({'error': 'QR code not found'}), 404
+    
+    data = qr_storage[qr_id]
+    links = data['links']
+    html_content = generate_html_with_links(links)
+    
+    return jsonify({
+        'links': links,
+        'html': html_content
+    })
 
-# QR code content options
-qr_content_options = ["URL", "Text"]
-# qr_content_options = ["URL", "Text", "Contact Information"]
-qr_content_type = st.selectbox("Select QR content type", qr_content_options)
+@app.route('/qr/<qr_id>')
+def view_qr_links(qr_id):
+    """Display the HTML page with all links"""
+    if qr_id not in qr_storage:
+        return "QR code not found", 404
+    
+    data = qr_storage[qr_id]
+    links = data['links']
+    html_content = generate_html_with_links(links)
+    
+    return html_content
 
-if qr_content_type == "Contact Information":
-    first_name = st.text_input("First Name")
-    last_name = st.text_input("Last Name")
-    phone = st.text_input("Phone Number")
-    email = st.text_input("Email Address")
-    content = f"BEGIN:VCARD\nVERSION:3.0\nN:{last_name};{first_name}\nFN:{first_name} {last_name}\nTEL;TYPE=CELL:{phone}\nEMAIL:{email}\nEND:VCARD"
-else:
-    content = st.text_area("Enter your content (one per line for multiple QR codes)", height=150)
-
-if st.button("Generate QR Code"):
-    if content:
-        contents = content.split("\n")
-
-        for i, c in enumerate(contents):
-            if c.strip():
-                # Generate QR code
-                qr = qrcode.QRCode(
-                    version=1,
-                    error_correction=qrcode.constants.ERROR_CORRECT_H,
-                    box_size=10,
-                    border=4
-                )
-                qr.add_data(c)
-                qr.make(fit=True)
-
-                img = qr.make_image(fill_color="black", back_color="white", image_factory=PilImage)
-
-                # Convert PilImage to bytes-like object
-                buffer = io.BytesIO()
-                img.save(buffer, format="PNG")
-                img_bytes = buffer.getvalue()
-
-                img_base64 = get_image_as_base64(img)
-
-                st.markdown(f"##### {c}")
-                st.image(img_bytes, caption=f"QR code for {c}", use_column_width=True)
-                file_name = get_url_filename(c) if qr_content_type == "URL" else f"QR_{i}"
-                st.markdown(f'<a href="data:image/png;base64,{img_base64}" download="{file_name}.png" style="display:inline-block;background-color:#4CAF50;border:none;color:white;padding:8px 16px;text-align:center;text-decoration:none;font-size:16px;margin:4px 2px;cursor:pointer;">Download QR code</a>', unsafe_allow_html=True)
-    else:
-        st.error("Please enter content for the QR code.")
+if __name__ == '__main__':
+    app.run(debug=False, host='0.0.0.0', port=int(os.environ.get('PORT', 8000)))
 
 
 

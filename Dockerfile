@@ -15,6 +15,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY app.py /app/app.py
 COPY templates /app/templates
 
+# Create data directory for persistent storage
+RUN mkdir -p /app/data
+
 EXPOSE 8000
 
 CMD ["gunicorn", "-w", "4", "-b", "0.0.0.0:8000", "app:app"]

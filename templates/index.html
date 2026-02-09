@@ -435,15 +435,39 @@
             document.body.removeChild(link);
         });
 
-        copyBtn.addEventListener('click', () => {
-            if (!currentQRData) return;
+        copyBtn.addEventListener('click', async () => {
+            const urlText = qrUrl.textContent;
+            if (!urlText) {
+                showError('No URL to copy');
+                return;
+            }
 
-            navigator.clipboard.writeText(currentQRData.qr_url).then(() => {
-                showSuccess('✅ URL copied to clipboard!');
-                setTimeout(() => successDiv.classList.remove('show'), 3000);
-            }).catch(() => {
+            try {
+                // Try modern clipboard API first
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    await navigator.clipboard.writeText(urlText);
+                    showSuccess('✅ URL copied to clipboard!');
+                    setTimeout(() => successDiv.classList.remove('show'), 3000);
+                } else {
+                    // Fallback for older browsers
+                    const textArea = document.createElement('textarea');
+                    textArea.value = urlText;
+                    textArea.style.position = 'fixed';
+                    textArea.style.left = '-999999px';
+                    document.body.appendChild(textArea);
+                    textArea.select();
+                    try {
+                        document.execCommand('copy');
+                        showSuccess('✅ URL copied to clipboard!');
+                        setTimeout(() => successDiv.classList.remove('show'), 3000);
+                    } catch (err) {
+                        showError('Failed to copy URL');
+                    }
+                    document.body.removeChild(textArea);
+                }
+            } catch (err) {
                 showError('Failed to copy URL');
-            });
+            }
         });
 
         // Allow Enter key to generate QR code

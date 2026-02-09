@@ -7,13 +7,53 @@ import string
 import random
 from datetime import datetime
 import os
+import json
+import fcntl
+from pathlib import Path
 
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max
 
-# Simple in-memory storage (use database for production)
-# For production, use PostgreSQL or MongoDB
-qr_storage = {}
+# Create data directory for persistent storage
+DATA_DIR = Path('/app/data') if os.path.exists('/app') else Path('data')
+DATA_DIR.mkdir(exist_ok=True)
+QR_DATA_FILE = DATA_DIR / 'qr_codes.json'
+
+def load_qr_storage():
+    """Load QR codes from file with file locking"""
+    if not QR_DATA_FILE.exists():
+        return {}
+    
+    try:
+        with open(QR_DATA_FILE, 'r') as f:
+            fcntl.flock(f.fileno(), fcntl.LOCK_SH)
+            try:
+                data = json.load(f)
+            finally:
+                fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+            return data
+    except (json.JSONDecodeError, FileNotFoundError):
+        return {}
+
+def save_qr_storage(qr_storage):
+    """Save QR codes to file with file locking"""
+    with open(QR_DATA_FILE, 'w') as f:
+        fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+        try:
+            json.dump(qr_storage, f, indent=2)
+        finally:
+            fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+
+def get_qr_data(qr_id):
+    """Get QR data for a specific ID"""
+    qr_storage = load_qr_storage()
+    return qr_storage.get(qr_id)
+
+def store_qr_data(qr_id, data):
+    """Store QR data for a specific ID"""
+    qr_storage = load_qr_storage()
+    qr_storage[qr_id] = data
+    save_qr_storage(qr_storage)
 
 def generate_short_id(length=6):
     """Generate a short random ID for the QR code"""
@@ -153,12 +193,13 @@ def generate_qr():
         links = [link.strip() for link in links if link.strip()]
         
         # Generate unique ID
+        qr_storage = load_qr_storage()
         qr_id = generate_short_id()
         while qr_id in qr_storage:
             qr_id = generate_short_id()
         
         # Create URL for the QR code
-        qr_url = f"{request.host_url.rstrip('/')}/#/qr/{qr_id}"
+        qr_url = f"{request.host_url.rstrip('/')}/qr/{qr_id}"
         
         # Generate QR code
         qr = qrcode.QRCode(
@@ -177,12 +218,13 @@ def generate_qr():
         img.save(buffer, format="PNG")
         img_base64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
         
-        # Store the links data
-        qr_storage[qr_id] = {
+        # Store the links data in persistent storage
+        qr_data = {
             'links': links,
             'created_at': datetime.now().isoformat(),
             'qr_image': img_base64
         }
+        store_qr_data(qr_id, qr_data)
         
         return jsonify({
             'success': True,
@@ -196,12 +238,12 @@ def generate_qr():
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/qr/<qr_id>')
-def get_qr_data(qr_id):
+def get_qr_api(qr_id):
     """Get the links and HTML for a specific QR code"""
-    if qr_id not in qr_storage:
+    data = get_qr_data(qr_id)
+    if not data:
         return jsonify({'error': 'QR code not found'}), 404
     
-    data = qr_storage[qr_id]
     links = data['links']
     html_content = generate_html_with_links(links)
     
@@ -213,10 +255,10 @@ def get_qr_data(qr_id):
 @app.route('/qr/<qr_id>')
 def view_qr_links(qr_id):
     """Display the HTML page with all links"""
-    if qr_id not in qr_storage:
+    data = get_qr_data(qr_id)
+    if not data:
         return "QR code not found", 404
     
-    data = qr_storage[qr_id]
     links = data['links']
     html_content = generate_html_with_links(links)
     
